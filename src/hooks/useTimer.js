@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { notifyUser, requestNotificationPermission } from "@/utils/notifications";
 
 const STORAGE_KEY = "timer-states-v1"
 
@@ -8,8 +9,11 @@ export default function useTimer(initialSeconds = 0) {
     try{
       const saved = localStorage.getItem(STORAGE_KEY)
       if(!saved) 
-        return { seconds: initialSeconds,
-       isRunning: false }
+        return { 
+          seconds: initialSeconds,
+          isRunning: false,
+          hasStarted: false 
+        }
 
       const state = JSON.parse(saved);
 
@@ -44,6 +48,7 @@ export default function useTimer(initialSeconds = 0) {
   //set to resume from previous state after refresh
 
   const intervalRef = useRef(null)
+  const notifiedRef = useRef(false)
 
 
   const saveState = (secondsToSave, running, started) =>{
@@ -75,6 +80,8 @@ export default function useTimer(initialSeconds = 0) {
     setIsRunning(false)
     setHasStarted(false)
     saveState(initialSeconds, false, false)
+    localStorage.removeItem(STORAGE_KEY);
+    notifiedRef.current = false;
   }
 
   const setTime = (totalSeconds) => {
@@ -82,31 +89,47 @@ export default function useTimer(initialSeconds = 0) {
     setIsRunning(false)
     setHasStarted(false)
     saveState(totalSeconds, false, false)
+    notifiedRef.current = false;
   } 
 
+
+  //App Start
   useEffect(() => {
-    if(isRunning && seconds > 0){
+    requestNotificationPermission()
+  }, []);
+
+
+  useEffect(() => {
+    if (isRunning && seconds > 0) {
       intervalRef.current = setInterval(() => {
         setSeconds(sec => {
-          const newSec = Math.max(sec - 1, 0) 
-          // max - should never go below 0
-          saveState(newSec, true, hasStarted)
-          return newSec
-        })
-      }, 1000)
+          const newSec = Math.max(sec - 1, 0);
+          return newSec;
+        });
+      }, 1000);
     }
-
-    return () => clearInterval(intervalRef.current)   
-
-  }, [isRunning, hasStarted])
+    return () => clearInterval(intervalRef.current);
+  }, [isRunning]);
 
 
   useEffect(() => {
-    if(seconds === 0 && isRunning)
-      setIsRunning(false)
-  }, [isRunning, seconds])
+    saveState(seconds, isRunning, hasStarted);
+  }, [seconds, isRunning, hasStarted]);
 
-  console.log("Rendering TimerControls: ", { hasStarted, isRunning });
+ useEffect(() => {
+  if (seconds === 0 && isRunning) {
+    setIsRunning(false);
+    setHasStarted(false);
+    if (!notifiedRef.current) {
+      notifyUser();
+      notifiedRef.current = true;
+    }
+  } else if (seconds > 0) {
+    notifiedRef.current = false;
+  }
+}, [isRunning, seconds]);
 
   return { seconds, isRunning, hasStarted, start, pause, reset, setTime};
 }
+
+
